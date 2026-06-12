@@ -2,33 +2,32 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
+import os
 
 # -----------------------------------------------------------------------------
 # 1. GLOBAL CONFIGURATION & SETUP
 # -----------------------------------------------------------------------------
 st.set_page_config(
-    page_title="TB Finance Master Dashboard",
-    page_icon="📊",
+    page_title="NTEP Finance Dashboard",
+    page_icon="🏥",
     layout="wide"
 )
 
-# Adaptive Power BI 3D CSS (Works in both Dark & Light Mode)
+# Adaptive Power BI 3D CSS
 st.markdown("""
 <style>
-    /* 3D Elevated Metric Cards */
     [data-testid="stMetric"] {
         background-color: var(--secondary-background-color);
         border-radius: 10px;
         padding: 15px 20px;
         box-shadow: 0 4px 6px rgba(0,0,0,0.1), 0 1px 3px rgba(0,0,0,0.08);
-        border-top: 5px solid #00A3E0; 
+        border-top: 5px solid #E31837; /* NTEP Red */
         transition: transform 0.2s ease-in-out;
     }
     [data-testid="stMetric"]:hover {
         transform: translateY(-5px);
         box-shadow: 0 10px 15px rgba(0,0,0,0.2);
     }
-    /* Sleek Table Styling */
     [data-testid="stDataFrame"] {
         border-radius: 8px;
         overflow: hidden;
@@ -66,17 +65,22 @@ def apply_sidebar_filters(df, filter_columns):
     st.sidebar.markdown("### 🔍 Filter Data")
     for col in filter_columns:
         if col in df.columns:
-            options = [str(x) for x in df[col].unique() if str(x).strip() not in ['None', 'nan', '', 'NaN']]
+            options = [str(x) for x in df[col].unique() if str(x).strip() not in ['None', 'nan', '', 'NaN', '<NA>']]
             options.sort()
             selected = st.sidebar.multiselect(f"Select {col}", options)
             if selected:
                 df = df[df[col].astype(str).isin(selected)]
     return df
 
-# THE BULLETPROOF JSON FIXER
-def safe_display(df):
-    """Converts dataframe to pure strings to absolutely prevent JSON NaN crashes during rendering."""
-    return df.fillna("").astype(str).replace(["nan", "NaN", "None"], "")
+# THE ULTIMATE BULLETPROOF NaN DESTROYER
+def clean_dataframe_for_display(df):
+    """Forcefully converts everything to strings and strips out all NaN artifacts to protect Streamlit."""
+    cleaned = df.copy()
+    cleaned = cleaned.fillna("") # Fill pure NaNs
+    for col in cleaned.columns:
+        # Convert to string and replace sneaky pandas/numpy artifacts
+        cleaned[col] = cleaned[col].astype(str).replace(["nan", "NaN", "None", "<NA>", "NaT"], "")
+    return cleaned
 
 @st.cache_data(ttl=120) 
 def load_smart_data(gid, module_name):
@@ -108,6 +112,9 @@ def load_smart_data(gid, module_name):
                 df = raw_df.iloc[header_row_idx + 1:].copy()
                 if df.iloc[0].astype(str).str.strip().isin(['A', 'B', 'C']).any():
                     df = df.iloc[1:].copy()
+                
+                # Drop fully empty rows
+                df = df.dropna(how='all')
                 return df.reset_index(drop=True)
                 
         else:
@@ -118,6 +125,9 @@ def load_smart_data(gid, module_name):
                 df = raw_df.iloc[idx + 1:].copy()
                 if df.iloc[0].astype(str).str.strip().isin(['A', 'B', 'C', '1', '2', '3']).sum() > 3:
                      df = df.iloc[1:].copy()
+                
+                # Drop fully empty rows
+                df = df.dropna(how='all')
                 return df.reset_index(drop=True)
 
         return raw_df 
@@ -127,22 +137,35 @@ def load_smart_data(gid, module_name):
 # -----------------------------------------------------------------------------
 # 3. SIDEBAR NAVIGATION
 # -----------------------------------------------------------------------------
-st.sidebar.title("🏢 TB Finance Master")
+# Add Logo to Sidebar if it exists
+if os.path.exists("logo.jpg"):
+    st.sidebar.image("logo.jpg", use_column_width=True)
+
+st.sidebar.title("NTEP Master")
 st.sidebar.markdown("---")
 selection = st.sidebar.radio("Navigate Module:", list(SHEETS.keys()))
 
-st.title(f"📈 {selection} Dashboard")
+# -----------------------------------------------------------------------------
+# 4. MAIN HEADER
+# -----------------------------------------------------------------------------
+col1, col2 = st.columns([1, 10])
+with col1:
+    if os.path.exists("logo.jpg"):
+        st.image("logo.jpg", width=80)
+with col2:
+    st.title(f"NTEP Finance Dashboard: {selection}")
 st.markdown("---")
 
 # -----------------------------------------------------------------------------
-# 4. TAB LOGIC & RENDERING
+# 5. TAB LOGIC & RENDERING
 # -----------------------------------------------------------------------------
 try:
     df = load_smart_data(SHEETS[selection], selection)
     
     if not df.empty:
+        # Initial cleanup of junk rows
         if df.columns[0] != 'Unnamed: 0':
-            df = df[~df.iloc[:, 0].astype(str).str.strip().isin(['None', 'nan', ''])].copy()
+            df = df[~df.iloc[:, 0].astype(str).str.strip().isin(['None', 'nan', '', 'NaN'])].copy()
 
         if selection == "ALL SPUTUM":
             df = apply_sidebar_filters(df, ['ASHA/TRANSPORTER NAME', 'TU/PHI', 'TYPE OF PAYMENT'])
@@ -167,10 +190,10 @@ try:
             
             if aasha_val > 0 or dmc_val > 0:
                 fig = px.pie(values=[aasha_val, dmc_val], names=['AASHA', 'DMC'], hole=0.5, 
-                             color_discrete_sequence=['#00A3E0', '#005A9C'], title="Expense Distribution")
+                             color_discrete_sequence=['#E31837', '#FFC72C'], title="Expense Distribution")
                 st.plotly_chart(fig, use_container_width=True, theme="streamlit")
             
-            st.dataframe(safe_display(df), use_container_width=True, hide_index=True)
+            st.dataframe(clean_dataframe_for_display(df), use_container_width=True, hide_index=True)
 
         elif selection == "POL EXP.":
             df = apply_sidebar_filters(df, ['Name of Employee', 'Designation'])
@@ -183,16 +206,16 @@ try:
                 top_spenders = chart_df.nlargest(10, kpi_col)
                 if not top_spenders.empty:
                     fig = px.bar(top_spenders, x='Name of Employee', y=kpi_col, title="Top 10 Expenditures by Employee",
-                                 color=kpi_col, color_continuous_scale='Blues')
+                                 color=kpi_col, color_continuous_scale='Reds')
                     st.plotly_chart(fig, use_container_width=True, theme="streamlit")
 
-            st.dataframe(safe_display(df), use_container_width=True, hide_index=True)
+            st.dataframe(clean_dataframe_for_display(df), use_container_width=True, hide_index=True)
 
         elif selection == "DRUG TRAN.":
             df = apply_sidebar_filters(df, ['Name of Employee', 'Designation'])
             kpi_col = 'TOTAL'
             st.metric(label="Total Drug Trans. Expense", value=format_inr(safe_sum(df[kpi_col]) if kpi_col in df.columns else 0))
-            st.dataframe(safe_display(df), use_container_width=True, hide_index=True)
+            st.dataframe(clean_dataframe_for_display(df), use_container_width=True, hide_index=True)
 
         elif selection == "X-RAY":
             numeric_cols = [c for c in df.columns if '(GROSS)' in c or '(TDS)' in c or '(PAID)' in c]
@@ -255,11 +278,14 @@ try:
                 st.markdown("<br>", unsafe_allow_html=True)
                 chart_df = df.groupby('X-RAY FACILITY NAME')[paid_cols[-1]].sum().reset_index()
                 chart_df = chart_df.nlargest(10, paid_cols[-1])
-                fig = px.bar(chart_df, x='X-RAY FACILITY NAME', y=paid_cols[-1], 
-                             title="Top Paid Facilities", color=paid_cols[-1], color_continuous_scale='Teal')
-                st.plotly_chart(fig, use_container_width=True, theme="streamlit")
+                # Filter out any NaN rows before plotting
+                chart_df = chart_df.dropna()
+                if not chart_df.empty:
+                    fig = px.bar(chart_df, x='X-RAY FACILITY NAME', y=paid_cols[-1], 
+                                 title="Top Paid Facilities", color=paid_cols[-1], color_continuous_scale='Reds')
+                    st.plotly_chart(fig, use_container_width=True, theme="streamlit")
 
-            st.dataframe(safe_display(df), use_container_width=True, hide_index=True)
+            st.dataframe(clean_dataframe_for_display(df), use_container_width=True, hide_index=True)
 
         elif selection == "OTHER EXP.":
             # Proper Line List Filters based on actual columns
@@ -267,7 +293,7 @@ try:
             
             kpi_col = 'AMOUNT' if 'AMOUNT' in df.columns else None
             total_val = safe_sum(df[kpi_col]) if kpi_col else 0
-            total_claims = len(df[df['AMOUNT'].notna() & (df['AMOUNT'].astype(str).str.strip() != '')]) if kpi_col else 0
+            total_claims = len(df[df['AMOUNT'].notna() & (df['AMOUNT'].astype(str).str.strip() != '') & (df['AMOUNT'].astype(str).str.strip() != 'nan')]) if kpi_col else 0
             
             c1, c2 = st.columns(2)
             c1.metric(label="Total Other Expenditures", value=format_inr(total_val))
@@ -278,11 +304,12 @@ try:
                 chart_df = df.copy()
                 chart_df[kpi_col] = pd.to_numeric(chart_df[kpi_col].astype(str).str.replace(r'[^\d.-]', '', regex=True), errors='coerce').fillna(0)
                 monthly_data = chart_df.groupby('MONTH OF EXPENSE')[kpi_col].sum().reset_index()
+                monthly_data = monthly_data.dropna()
                 if not monthly_data.empty:
-                    fig = px.area(monthly_data, x='MONTH OF EXPENSE', y=kpi_col, title="Monthly Expense Trend", markers=True, color_discrete_sequence=['#005A9C'])
+                    fig = px.area(monthly_data, x='MONTH OF EXPENSE', y=kpi_col, title="Monthly Expense Trend", markers=True, color_discrete_sequence=['#E31837'])
                     st.plotly_chart(fig, use_container_width=True, theme="streamlit")
             
-            st.dataframe(safe_display(df), use_container_width=True, hide_index=True)
+            st.dataframe(clean_dataframe_for_display(df), use_container_width=True, hide_index=True)
 
 except Exception as e:
     st.error("A critical error occurred while parsing the data structure.")

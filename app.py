@@ -7,18 +7,47 @@ import numpy as np
 # -----------------------------------------------------------------------------
 st.set_page_config(
     page_title="TB Finance Master Dashboard",
-    page_icon="🏥",
+    page_icon="📊",
     layout="wide"
 )
 
+# Custom CSS for "Power BI / MNC" 3D look
+st.markdown("""
+<style>
+    /* 3D Elevated Metric Cards */
+    div[data-testid="metric-container"] {
+        background-color: #1E1E2E;
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 10px 20px rgba(0,0,0,0.3), 0 6px 6px rgba(0,0,0,0.2);
+        border-left: 6px solid #00A3E0; /* Power BI Blue */
+        transition: transform 0.2s ease-in-out;
+    }
+    div[data-testid="metric-container"]:hover {
+        transform: translateY(-5px);
+    }
+    
+    /* Sleek Table Styling */
+    .stDataFrame {
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        border-radius: 10px;
+    }
+    
+    /* Hide top header line */
+    header {visibility: hidden;}
+</style>
+""", unsafe_allow_html=True)
+
+# Data Links
 PUBLISHED_LINK = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT_ai_LwZQK-DFfgojQ4ZUJiXKt8ikzzGEcnoLQN8hcpKfHxNtzkFEqcPn5jJC07QGiXh8_kLuexZfo/pubhtml"
+OTHER_EXP_LINK = "https://docs.google.com/spreadsheets/d/1vhQRXdUGfj4OL3y5heGQsGJeiukXhtBFX7lFzhHMaRE/export?format=csv&gid=0"
 
 SHEETS = {
     "ALL SPUTUM": "0",
     "POL EXP.": "57196367",
     "DRUG TRAN.": "1226029008",  
     "X-RAY": "721930106",
-    "OTHER EXP.": "1976797645"
+    "OTHER EXP.": "NEW_LINK"
 }
 
 # -----------------------------------------------------------------------------
@@ -33,7 +62,7 @@ def format_inr(number):
         return "₹0.00"
 
 def safe_sum(series):
-    clean_series = series.astype(str).str.replace(r'[^\d.]', '', regex=True)
+    clean_series = series.astype(str).str.replace(r'[^\d.-]', '', regex=True)
     return pd.to_numeric(clean_series, errors='coerce').fillna(0).sum()
 
 def apply_sidebar_filters(df, filter_columns):
@@ -49,8 +78,11 @@ def apply_sidebar_filters(df, filter_columns):
 
 @st.cache_data(ttl=120) 
 def load_smart_data(gid, module_name):
-    base_url = PUBLISHED_LINK.split('/pub')[0] 
-    csv_url = f"{base_url}/pub?gid={gid}&single=true&output=csv"
+    if module_name == "OTHER EXP.":
+        csv_url = OTHER_EXP_LINK
+    else:
+        base_url = PUBLISHED_LINK.split('/pub')[0] 
+        csv_url = f"{base_url}/pub?gid={gid}&single=true&output=csv"
     
     try:
         raw_df = pd.read_csv(csv_url, header=None)
@@ -78,7 +110,7 @@ def load_smart_data(gid, module_name):
                 return df
                 
         else:
-            header_idx = raw_df[raw_df.apply(lambda r: r.astype(str).str.contains('(?i)SR\.? NO\.?|TB UNIT|ZONE|Name of Employee', regex=True).any(), axis=1)].index
+            header_idx = raw_df[raw_df.apply(lambda r: r.astype(str).str.contains('(?i)SR\.? NO\.?|TB UNIT|ZONE|Name of Employee|INWARD NO', regex=True).any(), axis=1)].index
             if len(header_idx) > 0:
                 idx = header_idx[0]
                 raw_df.columns = raw_df.iloc[idx].astype(str).str.strip()
@@ -97,11 +129,11 @@ def load_smart_data(gid, module_name):
 # -----------------------------------------------------------------------------
 # 3. SIDEBAR NAVIGATION
 # -----------------------------------------------------------------------------
-st.sidebar.title("🏥 TB Finance Dashboard")
+st.sidebar.title("🏥 TB Finance Master")
 st.sidebar.markdown("---")
 selection = st.sidebar.radio("Navigate to Module:", list(SHEETS.keys()))
 
-st.title(f"{selection} Expense Data")
+st.title(f"📊 {selection} Data")
 st.markdown("---")
 
 # -----------------------------------------------------------------------------
@@ -128,21 +160,22 @@ try:
             aasha_val = safe_sum(df[df['TYPE OF PAYMENT'].astype(str).str.upper().str.contains('AASHA', na=False)][kpi_col]) if kpi_col and 'TYPE OF PAYMENT' in df.columns else 0
             dmc_val = safe_sum(df[df['TYPE OF PAYMENT'].astype(str).str.upper().str.contains('DMC', na=False)][kpi_col]) if kpi_col and 'TYPE OF PAYMENT' in df.columns else 0
 
-            st.markdown("### 📊 Key Metrics")
             c1, c2, c3 = st.columns(3)
             c1.metric(label="Grand Total (Rs.)", value=format_inr(total_val))
             c2.metric(label="Total AASHA Expenses", value=format_inr(aasha_val))
             c3.metric(label="Total DMC Expenses", value=format_inr(dmc_val))
             
+            # Fix JSON NaN Error
+            df = df.fillna(' ')
             st.dataframe(df, use_container_width=True, hide_index=True)
 
         elif selection == "POL EXP.":
             df = apply_sidebar_filters(df, ['Name of Employee', 'Designation'])
             kpi_col = 'Total'
             
-            st.markdown("### 📊 Key Metrics")
             st.metric(label="Total POL Expenditure", value=format_inr(safe_sum(df[kpi_col]) if kpi_col in df.columns else 0))
             
+            df = df.fillna(' ')
             st.dataframe(df, use_container_width=True, hide_index=True)
 
         elif selection == "DRUG TRAN.":
@@ -156,9 +189,9 @@ try:
 
             kpi_col = 'TOTAL'
             
-            st.markdown("### 📊 Key Metrics")
             st.metric(label="Total Drug Trans. Expense", value=format_inr(safe_sum(df[kpi_col]) if kpi_col in df.columns else 0))
             
+            df = df.fillna(' ')
             st.dataframe(df, use_container_width=True, hide_index=True)
 
         elif selection == "X-RAY":
@@ -204,15 +237,11 @@ try:
                 df = df.groupby('X-RAY FACILITY NAME', as_index=False).agg(agg_funcs)
                 
             # --- 4-COLUMN KPI SETUP FOR X-RAY ---
-            st.markdown("### 📊 Key Metrics")
-            
-            # Avoid double counting if 'TOTAL' is selected alongside other months
             gross_cols = [c for c in df.columns if '(GROSS)' in c and 'TOTAL' not in c.upper()]
             tds_cols = [c for c in df.columns if '(TDS)' in c and 'TOTAL' not in c.upper()]
             paid_cols = [c for c in df.columns if '(PAID)' in c and 'TOTAL' not in c.upper()]
             count_cols = [c for c in df.columns if '(X-RAY COUNT)' in c and 'TOTAL' not in c.upper()]
             
-            # Fallback if the user ONLY selected 'TOTAL' in the filter
             if not gross_cols: gross_cols = [c for c in df.columns if '(GROSS)' in c]
             if not tds_cols: tds_cols = [c for c in df.columns if '(TDS)' in c]
             if not paid_cols: paid_cols = [c for c in df.columns if '(PAID)' in c]
@@ -229,15 +258,33 @@ try:
             c3.metric(label="Total Net Paid", value=format_inr(tot_paid))
             c4.metric(label="Total X-Rays", value=int(tot_count))
             
+            # JSON Fix: Convert any resulting NaNs to blank spaces before displaying
+            df = df.fillna(' ')
             st.dataframe(df, use_container_width=True, hide_index=True)
 
         elif selection == "OTHER EXP.":
-            df = apply_sidebar_filters(df, ['ZONE', 'TYPE OF EXPENSE', 'MONTH', 'BUDGET HEAD'])
-            kpi_col = 'AMOUNT'
+            # Apply comprehensive filters for the new sheet
+            df = apply_sidebar_filters(df, ['ZONE', 'TYPE OF EXPENSE', 'MONTH', 'BUDGET HEAD', 'FILE STATUS'])
             
-            st.markdown("### 📊 Key Metrics")
-            st.metric(label="Total Other Expenditures", value=format_inr(safe_sum(df[kpi_col]) if kpi_col in df.columns else 0))
+            kpi_col = 'AMOUNT' if 'AMOUNT' in df.columns else None
+            total_val = safe_sum(df[kpi_col]) if kpi_col else 0
+            total_claims = len(df[df['AMOUNT'].notna() & (df['AMOUNT'] != '')]) if kpi_col else 0
             
+            c1, c2 = st.columns(2)
+            c1.metric(label="Total Other Expenditures", value=format_inr(total_val))
+            c2.metric(label="Total Number of Claims", value=total_claims)
+            
+            # Power BI Style Chart
+            if kpi_col and 'MONTH' in df.columns:
+                st.markdown("#### 📈 Expenses by Month")
+                chart_df = df.copy()
+                chart_df[kpi_col] = pd.to_numeric(chart_df[kpi_col].astype(str).str.replace(r'[^\d.-]', '', regex=True), errors='coerce').fillna(0)
+                monthly_data = chart_df.groupby('MONTH')[kpi_col].sum()
+                if not monthly_data.empty:
+                    st.bar_chart(monthly_data, color="#00A3E0")
+            
+            # Fix JSON NaN Error
+            df = df.fillna(' ')
             st.dataframe(df, use_container_width=True, hide_index=True)
 
 except Exception as e:

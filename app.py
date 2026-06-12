@@ -38,12 +38,14 @@ st.markdown("""
 PUBLISHED_LINK = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT_ai_LwZQK-DFfgojQ4ZUJiXKt8ikzzGEcnoLQN8hcpKfHxNtzkFEqcPn5jJC07QGiXh8_kLuexZfo/pubhtml"
 OTHER_EXP_LINK = "https://docs.google.com/spreadsheets/d/1vhQRXdUGfj4OL3y5heGQsGJeiukXhtBFX7lFzhHMaRE/export?format=csv&gid=0"
 
+# Added the new FILE TRACKER tab mapping
 SHEETS = {
     "ALL SPUTUM": "0",
     "POL EXP.": "57196367",
     "DRUG TRAN.": "1226029008",  
     "X-RAY": "721930106",
-    "OTHER EXP.": "NEW_LINK"
+    "OTHER EXP.": "NEW_LINK",
+    "FILE TRACKER": "1062217994" 
 }
 
 # -----------------------------------------------------------------------------
@@ -124,7 +126,7 @@ def load_smart_data(gid, module_name):
                 return df.reset_index(drop=True)
                 
         else:
-            header_idx = raw_df[raw_df.apply(lambda r: r.astype(str).str.contains('(?i)SR\.? NO\.?|TB UNIT|ZONE|Name of Employee|INWARD NO', regex=True).any(), axis=1)].index
+            header_idx = raw_df[raw_df.apply(lambda r: r.astype(str).str.contains('(?i)SR\.? NO\.?|TB UNIT|ZONE|Name of Employee|INWARD NO|FILE NAME', regex=True).any(), axis=1)].index
             if len(header_idx) > 0:
                 idx = header_idx[0]
                 raw_columns = raw_df.iloc[idx].values
@@ -170,14 +172,13 @@ try:
     df = load_smart_data(SHEETS[selection], selection)
     
     if not df.empty:
-        # CLEANUP: Remove NaN rows and Google Sheet 'TOTAL' rows that cause double counting
+        # CLEANUP: Remove NaN rows and Summary Rows
         if len(df.columns) > 0 and df.columns[0] != 'Unnamed: 0':
             df = df[~df.iloc[:, 0].astype(str).str.strip().isin(['None', 'nan', '', 'NaN'])].copy()
-            
-            # This safely scans the first 5 columns and deletes any Google Sheet "Grand Total" summary rows
             for col in df.columns[:5]:
                 df = df[~df[col].astype(str).str.strip().str.upper().isin(['TOTAL', 'GRAND TOTAL'])]
 
+        # --- ALL SPUTUM TAB ---
         if selection == "ALL SPUTUM":
             df = apply_sidebar_filters(df, ['ASHA/TRANSPORTER NAME', 'TU/PHI', 'TYPE OF PAYMENT'])
             
@@ -197,37 +198,40 @@ try:
             c2.metric(label="Total AASHA", value=format_inr(aasha_val))
             c3.metric(label="Total DMC", value=format_inr(dmc_val))
             
-            st.markdown("<br>", unsafe_allow_html=True)
-            
-            if aasha_val > 0 or dmc_val > 0:
-                fig = px.pie(values=[aasha_val, dmc_val], names=['AASHA', 'DMC'], hole=0.5, 
-                             color_discrete_sequence=['#E31837', '#FFC72C'], title="Expense Distribution")
-                st.plotly_chart(fig, use_container_width=True, theme="streamlit")
-            
             st.dataframe(clean_dataframe_for_display(df), use_container_width=True, hide_index=True)
 
+        # --- POL EXP TAB ---
         elif selection == "POL EXP.":
             df = apply_sidebar_filters(df, ['Name of Employee', 'Designation'])
-            kpi_col = 'Total'
-            st.metric(label="Total POL Expenditure", value=format_inr(safe_sum(df[kpi_col]) if kpi_col in df.columns else 0))
             
-            if kpi_col in df.columns and 'Name of Employee' in df.columns:
-                chart_df = df.copy()
-                chart_df[kpi_col] = pd.to_numeric(chart_df[kpi_col].astype(str).str.replace(r'[^\d.-]', '', regex=True), errors='coerce').fillna(0)
-                top_spenders = chart_df.nlargest(10, kpi_col)
-                if not top_spenders.empty:
-                    fig = px.bar(top_spenders, x='Name of Employee', y=kpi_col, title="Top 10 Expenditures by Employee",
-                                 color=kpi_col, color_continuous_scale='Reds')
-                    st.plotly_chart(fig, use_container_width=True, theme="streamlit")
+            # Since POL headers are merged in Google sheets, we find the Grand Total
+            kpi_col = 'Total' if 'Total' in df.columns else [c for c in df.columns if 'TOTAL' in str(c).upper()][-1]
+            st.metric(label="Total POL Expenditure (Selected Month)", value=format_inr(safe_sum(df[kpi_col])))
+            
+            # The "+" Type Expansion for details
+            base_cols = [c for c in df.columns if c in ['Sr. No.', 'Name of Employee', 'Bank  A/c No.', 'IFSC Code', 'Designation', 'Vehicle No.', kpi_col]]
+            detail_cols = [c for c in df.columns if c not in base_cols and 'Unnamed' not in str(c) and 'Blank_Col' not in str(c)]
+            
+            st.dataframe(clean_dataframe_for_display(df[base_cols]), use_container_width=True, hide_index=True)
+            
+            with st.expander("➕ View Detailed Expense Breakdown (VP, VM, Mis, Training...)"):
+                st.dataframe(clean_dataframe_for_display(df[['Name of Employee'] + detail_cols]), use_container_width=True, hide_index=True)
 
-            st.dataframe(clean_dataframe_for_display(df), use_container_width=True, hide_index=True)
-
+        # --- DRUG TRAN TAB ---
         elif selection == "DRUG TRAN.":
             df = apply_sidebar_filters(df, ['Name of Employee', 'Designation'])
+            
+            actual_month_cols = [c for c in df.columns if c.upper() in ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUNE', 'JULY', 'AUG', 'SEPT', 'OCT', 'NOV', 'DEC']]
+            if actual_month_cols:
+                st.sidebar.markdown("### 📅 Select Months")
+                selected_months = st.sidebar.multiselect("Months to View", actual_month_cols, default=actual_month_cols)
+                df = df.drop(columns=[c for c in actual_month_cols if c not in selected_months], errors='ignore')
+
             kpi_col = 'TOTAL'
             st.metric(label="Total Drug Trans. Expense", value=format_inr(safe_sum(df[kpi_col]) if kpi_col in df.columns else 0))
             st.dataframe(clean_dataframe_for_display(df), use_container_width=True, hide_index=True)
 
+        # --- X-RAY TAB ---
         elif selection == "X-RAY":
             numeric_cols = [c for c in df.columns if '(GROSS)' in c or '(TDS)' in c or '(PAID)' in c]
             for c in numeric_cols:
@@ -242,61 +246,34 @@ try:
                     generated_cols.append(count_col)
             
             numeric_cols.extend(generated_cols)
-            
-            static_cols = [c for c in df.columns if c not in numeric_cols]
-            prefixes = list(dict.fromkeys([c.split(' (')[0] for c in numeric_cols]))
-            
-            ordered_cols = static_cols.copy()
-            for prefix in prefixes:
-                if f"{prefix} (GROSS)" in numeric_cols: ordered_cols.append(f"{prefix} (GROSS)")
-                if f"{prefix} (TDS)" in numeric_cols: ordered_cols.append(f"{prefix} (TDS)")
-                if f"{prefix} (PAID)" in numeric_cols: ordered_cols.append(f"{prefix} (PAID)")
-                if f"{prefix} (X-RAY COUNT)" in numeric_cols: ordered_cols.append(f"{prefix} (X-RAY COUNT)")
-            df = df[ordered_cols]
-
             df = apply_sidebar_filters(df, ['X-RAY FACILITY NAME', 'TB UNITS'])
+            
+            prefixes = list(dict.fromkeys([c.split(' (')[0] for c in numeric_cols]))
+            st.sidebar.markdown("### 📅 Select Months")
+            selected_months = st.sidebar.multiselect("Months to View", prefixes, default=prefixes)
+            cols_to_drop = [c for c in numeric_cols if c.split(' (')[0] not in selected_months]
+            df = df.drop(columns=cols_to_drop, errors='ignore')
             
             view_type = st.radio("Display Format:", ["All Branches (Detailed)", "Facility Wise (Merged Totals)"], horizontal=True)
             
             if view_type == "Facility Wise (Merged Totals)" and 'X-RAY FACILITY NAME' in df.columns:
-                agg_funcs = {c: 'sum' for c in df.columns if c in numeric_cols}
+                agg_funcs = {c: 'sum' for c in df.columns if c in numeric_cols and c not in cols_to_drop}
                 for c in ['Bank Account No.', 'IFSC Code']:
                     if c in df.columns: agg_funcs[c] = 'first'
                 df = df.groupby('X-RAY FACILITY NAME', as_index=False).agg(agg_funcs)
                 
-            gross_cols = [c for c in df.columns if '(GROSS)' in c and 'TOTAL' not in c.upper()]
-            tds_cols = [c for c in df.columns if '(TDS)' in c and 'TOTAL' not in c.upper()]
-            paid_cols = [c for c in df.columns if '(PAID)' in c and 'TOTAL' not in c.upper()]
-            count_cols = [c for c in df.columns if '(X-RAY COUNT)' in c and 'TOTAL' not in c.upper()]
+            # Filter the view down to ONLY counts!
+            static_cols = [c for c in df.columns if c not in numeric_cols]
+            count_only_cols = [c for c in df.columns if '(X-RAY COUNT)' in c and 'TOTAL' not in c.upper()]
             
-            if not gross_cols: gross_cols = [c for c in df.columns if '(GROSS)' in c]
-            if not tds_cols: tds_cols = [c for c in df.columns if '(TDS)' in c]
-            if not paid_cols: paid_cols = [c for c in df.columns if '(PAID)' in c]
-            if not count_cols: count_cols = [c for c in df.columns if '(X-RAY COUNT)' in c]
-
-            tot_gross = df[gross_cols].sum().sum() if gross_cols else 0
-            tot_tds = df[tds_cols].sum().sum() if tds_cols else 0
-            tot_paid = df[paid_cols].sum().sum() if paid_cols else 0
-            tot_count = df[count_cols].sum().sum() if count_cols else 0
+            tot_count = df[count_only_cols].sum().sum() if count_only_cols else 0
+            st.metric(label="Total X-Rays Performed", value=int(tot_count))
             
-            c1, c2, c3, c4 = st.columns(4)
-            c1.metric(label="Total Gross", value=format_inr(tot_gross))
-            c2.metric(label="Total TDS", value=format_inr(tot_tds))
-            c3.metric(label="Total Net Paid", value=format_inr(tot_paid))
-            c4.metric(label="Total X-Rays", value=int(tot_count))
-            
-            if paid_cols and 'X-RAY FACILITY NAME' in df.columns:
-                st.markdown("<br>", unsafe_allow_html=True)
-                chart_df = df.groupby('X-RAY FACILITY NAME')[paid_cols[-1]].sum().reset_index()
-                chart_df = chart_df.nlargest(10, paid_cols[-1])
-                chart_df = chart_df.dropna()
-                if not chart_df.empty:
-                    fig = px.bar(chart_df, x='X-RAY FACILITY NAME', y=paid_cols[-1], 
-                                 title="Top Paid Facilities", color=paid_cols[-1], color_continuous_scale='Reds')
-                    st.plotly_chart(fig, use_container_width=True, theme="streamlit")
+            # Show simplified dataframe with just counts
+            simplified_view_cols = static_cols + count_only_cols
+            st.dataframe(clean_dataframe_for_display(df[simplified_view_cols]), use_container_width=True, hide_index=True)
 
-            st.dataframe(clean_dataframe_for_display(df), use_container_width=True, hide_index=True)
-
+        # --- OTHER EXP TAB ---
         elif selection == "OTHER EXP.":
             df = apply_sidebar_filters(df, ['ZONE', 'TB UNIT', 'MONTH OF EXPENSE', 'TYPE OF EXPENSE', 'BUDGET HEAD', 'FILE STATUS'])
             
@@ -308,15 +285,20 @@ try:
             c1.metric(label="Total Other Expenditures", value=format_inr(total_val))
             c2.metric(label="Total Number of Claims", value=total_claims)
             
-            if kpi_col and 'MONTH OF EXPENSE' in df.columns:
-                st.markdown("<br>", unsafe_allow_html=True)
-                chart_df = df.copy()
-                chart_df[kpi_col] = pd.to_numeric(chart_df[kpi_col].astype(str).str.replace(r'[^\d.-]', '', regex=True), errors='coerce').fillna(0)
-                monthly_data = chart_df.groupby('MONTH OF EXPENSE')[kpi_col].sum().reset_index()
-                monthly_data = monthly_data.dropna()
-                if not monthly_data.empty:
-                    fig = px.area(monthly_data, x='MONTH OF EXPENSE', y=kpi_col, title="Monthly Expense Trend", markers=True, color_discrete_sequence=['#E31837'])
-                    st.plotly_chart(fig, use_container_width=True, theme="streamlit")
+            st.dataframe(clean_dataframe_for_display(df), use_container_width=True, hide_index=True)
+
+        # --- FILE TRACKER (NEW SUMMARY TAB) ---
+        elif selection == "FILE TRACKER":
+            df = apply_sidebar_filters(df, ['FILE NAME', 'STATUS'])
+            
+            # Simple KPIs based on Status
+            total_files = len(df)
+            submitted_files = len(df[df['STATUS'].astype(str).str.upper().str.contains("SUBMITTED", na=False)])
+            
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Total Files TRACKED", total_files)
+            c2.metric("Files SUBMITTED", submitted_files)
+            c3.metric("Pending / Processing", total_files - submitted_files)
             
             st.dataframe(clean_dataframe_for_display(df), use_container_width=True, hide_index=True)
 

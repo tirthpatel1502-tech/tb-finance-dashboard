@@ -73,7 +73,6 @@ def apply_sidebar_filters(df, filter_columns):
     return df
 
 def clean_dataframe_for_display(df):
-    """Forcefully converts everything to strings and strips out all NaN artifacts to protect Streamlit."""
     cleaned = df.copy()
     cleaned = cleaned.fillna("") 
     for col in cleaned.columns:
@@ -81,7 +80,6 @@ def clean_dataframe_for_display(df):
     return cleaned
 
 def clean_column_names(columns):
-    """Prevents the 'name: NaN' JSON error by renaming blank headers"""
     cleaned_cols = []
     for i, col in enumerate(columns):
         col_str = str(col).strip()
@@ -154,7 +152,7 @@ st.sidebar.markdown("---")
 selection = st.sidebar.radio("Select Module:", list(SHEETS.keys()))
 
 # -----------------------------------------------------------------------------
-# 4. MAIN HEADER (Updated to NTEP Finance Dashboard)
+# 4. MAIN HEADER 
 # -----------------------------------------------------------------------------
 col1, col2 = st.columns([1, 10])
 with col1:
@@ -172,9 +170,13 @@ try:
     df = load_smart_data(SHEETS[selection], selection)
     
     if not df.empty:
-        # Initial cleanup of junk rows
+        # CLEANUP: Remove NaN rows and Google Sheet 'TOTAL' rows that cause double counting
         if len(df.columns) > 0 and df.columns[0] != 'Unnamed: 0':
             df = df[~df.iloc[:, 0].astype(str).str.strip().isin(['None', 'nan', '', 'NaN'])].copy()
+            
+            # This safely scans the first 5 columns and deletes any Google Sheet "Grand Total" summary rows
+            for col in df.columns[:5]:
+                df = df[~df[col].astype(str).str.strip().str.upper().isin(['TOTAL', 'GRAND TOTAL'])]
 
         if selection == "ALL SPUTUM":
             df = apply_sidebar_filters(df, ['ASHA/TRANSPORTER NAME', 'TU/PHI', 'TYPE OF PAYMENT'])

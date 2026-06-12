@@ -1,6 +1,8 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import plotly.express as px
+import plotly.graph_objects as go
 
 # -----------------------------------------------------------------------------
 # 1. GLOBAL CONFIGURATION & SETUP
@@ -11,34 +13,40 @@ st.set_page_config(
     layout="wide"
 )
 
-# Custom CSS for "Power BI / MNC" 3D look
+# Advanced Power BI / MNC 3D CSS
 st.markdown("""
 <style>
+    /* Main Background & Fonts */
+    .stApp { background-color: #F3F4F6; }
+    
     /* 3D Elevated Metric Cards */
-    div[data-testid="metric-container"] {
-        background-color: #1E1E2E;
-        border-radius: 12px;
-        padding: 20px;
-        box-shadow: 0 10px 20px rgba(0,0,0,0.3), 0 6px 6px rgba(0,0,0,0.2);
-        border-left: 6px solid #00A3E0; /* Power BI Blue */
-        transition: transform 0.2s ease-in-out;
+    [data-testid="stMetric"] {
+        background-color: #FFFFFF;
+        border-radius: 10px;
+        padding: 15px 20px;
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        border-top: 5px solid #005A9C; /* Corporate Blue Line */
+        transition: transform 0.2s;
     }
-    div[data-testid="metric-container"]:hover {
+    [data-testid="stMetric"]:hover {
         transform: translateY(-5px);
     }
     
-    /* Sleek Table Styling */
-    .stDataFrame {
-        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-        border-radius: 10px;
+    /* Metric Value Styling */
+    [data-testid="stMetricValue"] {
+        font-size: 28px !important;
+        font-weight: 700 !important;
+        color: #111827 !important;
     }
     
-    /* Hide top header line */
-    header {visibility: hidden;}
+    /* Table Styling */
+    [data-testid="stDataFrame"] {
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        border-radius: 8px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
-# Data Links
 PUBLISHED_LINK = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT_ai_LwZQK-DFfgojQ4ZUJiXKt8ikzzGEcnoLQN8hcpKfHxNtzkFEqcPn5jJC07QGiXh8_kLuexZfo/pubhtml"
 OTHER_EXP_LINK = "https://docs.google.com/spreadsheets/d/1vhQRXdUGfj4OL3y5heGQsGJeiukXhtBFX7lFzhHMaRE/export?format=csv&gid=0"
 
@@ -76,6 +84,11 @@ def apply_sidebar_filters(df, filter_columns):
                 df = df[df[col].astype(str).isin(selected)]
     return df
 
+# ULTIMATE JSON NaN FIXER
+def clean_for_streamlit(df):
+    """Removes all NaN, NaT, and inf values that crash Streamlit's JSON parser"""
+    return df.replace([np.inf, -np.inf, np.nan], None)
+
 @st.cache_data(ttl=120) 
 def load_smart_data(gid, module_name):
     if module_name == "OTHER EXP.":
@@ -106,8 +119,7 @@ def load_smart_data(gid, module_name):
                 df = raw_df.iloc[header_row_idx + 1:].copy()
                 if df.iloc[0].astype(str).str.strip().isin(['A', 'B', 'C']).any():
                     df = df.iloc[1:].copy()
-                df = df.reset_index(drop=True)
-                return df
+                return df.reset_index(drop=True)
                 
         else:
             header_idx = raw_df[raw_df.apply(lambda r: r.astype(str).str.contains('(?i)SR\.? NO\.?|TB UNIT|ZONE|Name of Employee|INWARD NO', regex=True).any(), axis=1)].index
@@ -117,23 +129,20 @@ def load_smart_data(gid, module_name):
                 df = raw_df.iloc[idx + 1:].copy()
                 if df.iloc[0].astype(str).str.strip().isin(['A', 'B', 'C', '1', '2', '3']).sum() > 3:
                      df = df.iloc[1:].copy()
-                df = df.reset_index(drop=True)
-                return df
+                return df.reset_index(drop=True)
 
         return raw_df 
-        
     except Exception as e:
-        st.error(f"Failed to load data. Error: {e}")
         return pd.DataFrame()
 
 # -----------------------------------------------------------------------------
 # 3. SIDEBAR NAVIGATION
 # -----------------------------------------------------------------------------
-st.sidebar.title("🏥 TB Finance Master")
+st.sidebar.title("🏢 TB Finance Master")
 st.sidebar.markdown("---")
-selection = st.sidebar.radio("Navigate to Module:", list(SHEETS.keys()))
+selection = st.sidebar.radio("Navigate Module:", list(SHEETS.keys()))
 
-st.title(f"📊 {selection} Data")
+st.title(f"📈 {selection} Dashboard")
 st.markdown("---")
 
 # -----------------------------------------------------------------------------
@@ -149,12 +158,6 @@ try:
         if selection == "ALL SPUTUM":
             df = apply_sidebar_filters(df, ['ASHA/TRANSPORTER NAME', 'TU/PHI', 'TYPE OF PAYMENT'])
             
-            month_cols = [c for c in df.columns if any(m in str(c).upper() for m in ['DEC', 'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN']) and 'AMOUNT' not in str(c).upper()]
-            if month_cols:
-                st.sidebar.markdown("### 📅 Select Months")
-                selected_months = st.sidebar.multiselect("Months to View", month_cols, default=month_cols)
-                df = df.drop(columns=[c for c in month_cols if c not in selected_months], errors='ignore')
-
             kpi_col = 'AMOUNT Rs.' if 'AMOUNT Rs.' in df.columns else ('AMOUNT Rs' if 'AMOUNT Rs' in df.columns else None)
             total_val = safe_sum(df[kpi_col]) if kpi_col else 0
             aasha_val = safe_sum(df[df['TYPE OF PAYMENT'].astype(str).str.upper().str.contains('AASHA', na=False)][kpi_col]) if kpi_col and 'TYPE OF PAYMENT' in df.columns else 0
@@ -162,37 +165,41 @@ try:
 
             c1, c2, c3 = st.columns(3)
             c1.metric(label="Grand Total (Rs.)", value=format_inr(total_val))
-            c2.metric(label="Total AASHA Expenses", value=format_inr(aasha_val))
-            c3.metric(label="Total DMC Expenses", value=format_inr(dmc_val))
+            c2.metric(label="Total AASHA", value=format_inr(aasha_val))
+            c3.metric(label="Total DMC", value=format_inr(dmc_val))
             
-            # Fix JSON NaN Error
-            df = df.fillna(' ')
-            st.dataframe(df, use_container_width=True, hide_index=True)
+            st.markdown("<br>", unsafe_allow_html=True)
+            
+            # Plotly Donut Chart
+            if aasha_val > 0 or dmc_val > 0:
+                fig = px.pie(values=[aasha_val, dmc_val], names=['AASHA', 'DMC'], hole=0.5, 
+                             color_discrete_sequence=['#00A3E0', '#005A9C'], title="Expense Distribution")
+                st.plotly_chart(fig, use_container_width=True)
+            
+            st.dataframe(clean_for_streamlit(df), use_container_width=True, hide_index=True)
 
         elif selection == "POL EXP.":
             df = apply_sidebar_filters(df, ['Name of Employee', 'Designation'])
             kpi_col = 'Total'
-            
             st.metric(label="Total POL Expenditure", value=format_inr(safe_sum(df[kpi_col]) if kpi_col in df.columns else 0))
             
-            df = df.fillna(' ')
-            st.dataframe(df, use_container_width=True, hide_index=True)
+            # Plotly Bar Chart
+            if kpi_col in df.columns and 'Name of Employee' in df.columns:
+                chart_df = df.copy()
+                chart_df[kpi_col] = pd.to_numeric(chart_df[kpi_col].astype(str).str.replace(r'[^\d.-]', '', regex=True), errors='coerce').fillna(0)
+                top_spenders = chart_df.nlargest(10, kpi_col)
+                if not top_spenders.empty:
+                    fig = px.bar(top_spenders, x='Name of Employee', y=kpi_col, title="Top 10 Expenditures by Employee",
+                                 color=kpi_col, color_continuous_scale='Blues')
+                    st.plotly_chart(fig, use_container_width=True)
+
+            st.dataframe(clean_for_streamlit(df), use_container_width=True, hide_index=True)
 
         elif selection == "DRUG TRAN.":
             df = apply_sidebar_filters(df, ['Name of Employee', 'Designation'])
-            
-            actual_month_cols = [c for c in df.columns if c.upper() in ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUNE', 'JULY', 'AUG', 'SEPT', 'OCT', 'NOV', 'DEC']]
-            if actual_month_cols:
-                st.sidebar.markdown("### 📅 Select Months")
-                selected_months = st.sidebar.multiselect("Months to View", actual_month_cols, default=actual_month_cols)
-                df = df.drop(columns=[c for c in actual_month_cols if c not in selected_months], errors='ignore')
-
             kpi_col = 'TOTAL'
-            
             st.metric(label="Total Drug Trans. Expense", value=format_inr(safe_sum(df[kpi_col]) if kpi_col in df.columns else 0))
-            
-            df = df.fillna(' ')
-            st.dataframe(df, use_container_width=True, hide_index=True)
+            st.dataframe(clean_for_streamlit(df), use_container_width=True, hide_index=True)
 
         elif selection == "X-RAY":
             numeric_cols = [c for c in df.columns if '(GROSS)' in c or '(TDS)' in c or '(PAID)' in c]
@@ -222,21 +229,14 @@ try:
 
             df = apply_sidebar_filters(df, ['X-RAY FACILITY NAME', 'TB UNITS'])
             
-            st.sidebar.markdown("### 📅 Select Months")
-            selected_months = st.sidebar.multiselect("Months to View", prefixes, default=prefixes)
-            cols_to_drop = [c for c in numeric_cols if c.split(' (')[0] not in selected_months]
-            df = df.drop(columns=cols_to_drop, errors='ignore')
-            
-            st.markdown("### ⚙️ View Options")
             view_type = st.radio("Display Format:", ["All Branches (Detailed)", "Facility Wise (Merged Totals)"], horizontal=True)
             
             if view_type == "Facility Wise (Merged Totals)" and 'X-RAY FACILITY NAME' in df.columns:
-                agg_funcs = {c: 'sum' for c in df.columns if c in numeric_cols and c not in cols_to_drop}
+                agg_funcs = {c: 'sum' for c in df.columns if c in numeric_cols}
                 for c in ['Bank Account No.', 'IFSC Code']:
                     if c in df.columns: agg_funcs[c] = 'first'
                 df = df.groupby('X-RAY FACILITY NAME', as_index=False).agg(agg_funcs)
                 
-            # --- 4-COLUMN KPI SETUP FOR X-RAY ---
             gross_cols = [c for c in df.columns if '(GROSS)' in c and 'TOTAL' not in c.upper()]
             tds_cols = [c for c in df.columns if '(TDS)' in c and 'TOTAL' not in c.upper()]
             paid_cols = [c for c in df.columns if '(PAID)' in c and 'TOTAL' not in c.upper()]
@@ -258,12 +258,18 @@ try:
             c3.metric(label="Total Net Paid", value=format_inr(tot_paid))
             c4.metric(label="Total X-Rays", value=int(tot_count))
             
-            # JSON Fix: Convert any resulting NaNs to blank spaces before displaying
-            df = df.fillna(' ')
-            st.dataframe(df, use_container_width=True, hide_index=True)
+            # Plotly Chart for X-RAY
+            if paid_cols and 'X-RAY FACILITY NAME' in df.columns:
+                st.markdown("<br>", unsafe_allow_html=True)
+                chart_df = df.groupby('X-RAY FACILITY NAME')[paid_cols[-1]].sum().reset_index()
+                chart_df = chart_df.nlargest(10, paid_cols[-1])
+                fig = px.bar(chart_df, x='X-RAY FACILITY NAME', y=paid_cols[-1], 
+                             title="Top Paid Facilities", color=paid_cols[-1], color_continuous_scale='Teal')
+                st.plotly_chart(fig, use_container_width=True)
+
+            st.dataframe(clean_for_streamlit(df), use_container_width=True, hide_index=True)
 
         elif selection == "OTHER EXP.":
-            # Apply comprehensive filters for the new sheet
             df = apply_sidebar_filters(df, ['ZONE', 'TYPE OF EXPENSE', 'MONTH', 'BUDGET HEAD', 'FILE STATUS'])
             
             kpi_col = 'AMOUNT' if 'AMOUNT' in df.columns else None
@@ -274,18 +280,16 @@ try:
             c1.metric(label="Total Other Expenditures", value=format_inr(total_val))
             c2.metric(label="Total Number of Claims", value=total_claims)
             
-            # Power BI Style Chart
             if kpi_col and 'MONTH' in df.columns:
-                st.markdown("#### 📈 Expenses by Month")
+                st.markdown("<br>", unsafe_allow_html=True)
                 chart_df = df.copy()
                 chart_df[kpi_col] = pd.to_numeric(chart_df[kpi_col].astype(str).str.replace(r'[^\d.-]', '', regex=True), errors='coerce').fillna(0)
-                monthly_data = chart_df.groupby('MONTH')[kpi_col].sum()
+                monthly_data = chart_df.groupby('MONTH')[kpi_col].sum().reset_index()
                 if not monthly_data.empty:
-                    st.bar_chart(monthly_data, color="#00A3E0")
+                    fig = px.area(monthly_data, x='MONTH', y=kpi_col, title="Monthly Expense Trend", markers=True, color_discrete_sequence=['#005A9C'])
+                    st.plotly_chart(fig, use_container_width=True)
             
-            # Fix JSON NaN Error
-            df = df.fillna(' ')
-            st.dataframe(df, use_container_width=True, hide_index=True)
+            st.dataframe(clean_for_streamlit(df), use_container_width=True, hide_index=True)
 
 except Exception as e:
     st.error("A critical error occurred while parsing the data structure.")

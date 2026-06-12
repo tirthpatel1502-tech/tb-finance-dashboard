@@ -33,7 +33,6 @@ def format_inr(number):
         return "₹0.00"
 
 def safe_sum(series):
-    # Strictly extracts numbers and sums them safely
     clean_series = series.astype(str).str.replace(r'[^\d.]', '', regex=True)
     return pd.to_numeric(clean_series, errors='coerce').fillna(0).sum()
 
@@ -41,7 +40,6 @@ def apply_sidebar_filters(df, filter_columns):
     st.sidebar.markdown("### 🔍 Filter Data")
     for col in filter_columns:
         if col in df.columns:
-            # Clean options
             options = [str(x) for x in df[col].unique() if str(x).strip() not in ['None', 'nan', '']]
             options.sort()
             selected = st.sidebar.multiselect(f"Select {col}", options)
@@ -51,29 +49,19 @@ def apply_sidebar_filters(df, filter_columns):
 
 @st.cache_data(ttl=120) 
 def load_smart_data(gid, module_name):
-    """Intelligently scans the sheet to find headers, regardless of merged cells or blank rows."""
     base_url = PUBLISHED_LINK.split('/pub')[0] 
     csv_url = f"{base_url}/pub?gid={gid}&single=true&output=csv"
     
     try:
-        # Read raw without headers
         raw_df = pd.read_csv(csv_url, header=None)
         
         if module_name == "X-RAY":
-            # 1. SMART SCAN FOR X-RAY
-            # Find the row containing 'GROSS'
             gross_idx = raw_df[raw_df.apply(lambda r: r.astype(str).str.contains('GROSS', case=False).any(), axis=1)].index
-            
             if len(gross_idx) > 0:
                 header_row_idx = gross_idx[0]
-                
-                # Extract the row above it (The Months) and forward fill to fix merged cells
                 month_row = raw_df.iloc[header_row_idx - 1].replace({'None': np.nan, '': np.nan, pd.NA: np.nan}).ffill().fillna('')
-                
-                # Extract the Sub-Headers (GROSS, TDS, PAID)
                 sub_row = raw_df.iloc[header_row_idx].fillna('')
                 
-                # Combine them intelligently
                 new_cols = []
                 for m, s in zip(month_row, sub_row):
                     m_str, s_str = str(m).strip(), str(s).strip()
@@ -83,35 +71,24 @@ def load_smart_data(gid, module_name):
                         new_cols.append(s_str if s_str else m_str)
                 
                 raw_df.columns = new_cols
-                
-                # Slice the dataframe to keep only data below headers
                 df = raw_df.iloc[header_row_idx + 1:].copy()
-                
-                # Destroy the alphabet row (A, B, C...) if it exists
                 if df.iloc[0].astype(str).str.strip().isin(['A', 'B', 'C']).any():
                     df = df.iloc[1:].copy()
-                    
                 df = df.reset_index(drop=True)
                 return df
                 
         else:
-            # 2. SMART SCAN FOR OTHER MODULES
-            # Scan for standard header keywords
             header_idx = raw_df[raw_df.apply(lambda r: r.astype(str).str.contains('(?i)SR\.? NO\.?|TB UNIT|ZONE|Name of Employee', regex=True).any(), axis=1)].index
-            
             if len(header_idx) > 0:
                 idx = header_idx[0]
                 raw_df.columns = raw_df.iloc[idx].astype(str).str.strip()
                 df = raw_df.iloc[idx + 1:].copy()
-                
-                # Destroy Alphabet row if exists
                 if df.iloc[0].astype(str).str.strip().isin(['A', 'B', 'C', '1', '2', '3']).sum() > 3:
                      df = df.iloc[1:].copy()
-                     
                 df = df.reset_index(drop=True)
                 return df
 
-        return raw_df # Fallback
+        return raw_df 
         
     except Exception as e:
         st.error(f"Failed to load data. Error: {e}")
@@ -134,14 +111,12 @@ try:
     df = load_smart_data(SHEETS[selection], selection)
     
     if not df.empty:
-        # Clean global junk rows
         if df.columns[0] != 'Unnamed: 0':
             df = df[~df.iloc[:, 0].astype(str).str.strip().isin(['None', 'nan', ''])].copy()
 
         if selection == "ALL SPUTUM":
             df = apply_sidebar_filters(df, ['ASHA/TRANSPORTER NAME', 'TU/PHI', 'TYPE OF PAYMENT'])
             
-            # Monthly filters
             month_cols = [c for c in df.columns if any(m in str(c).upper() for m in ['DEC', 'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN']) and 'AMOUNT' not in str(c).upper()]
             if month_cols:
                 st.sidebar.markdown("### 📅 Select Months")
@@ -153,16 +128,21 @@ try:
             aasha_val = safe_sum(df[df['TYPE OF PAYMENT'].astype(str).str.upper().str.contains('AASHA', na=False)][kpi_col]) if kpi_col and 'TYPE OF PAYMENT' in df.columns else 0
             dmc_val = safe_sum(df[df['TYPE OF PAYMENT'].astype(str).str.upper().str.contains('DMC', na=False)][kpi_col]) if kpi_col and 'TYPE OF PAYMENT' in df.columns else 0
 
+            st.markdown("### 📊 Key Metrics")
             c1, c2, c3 = st.columns(3)
             c1.metric(label="Grand Total (Rs.)", value=format_inr(total_val))
             c2.metric(label="Total AASHA Expenses", value=format_inr(aasha_val))
             c3.metric(label="Total DMC Expenses", value=format_inr(dmc_val))
+            
             st.dataframe(df, use_container_width=True, hide_index=True)
 
         elif selection == "POL EXP.":
             df = apply_sidebar_filters(df, ['Name of Employee', 'Designation'])
             kpi_col = 'Total'
+            
+            st.markdown("### 📊 Key Metrics")
             st.metric(label="Total POL Expenditure", value=format_inr(safe_sum(df[kpi_col]) if kpi_col in df.columns else 0))
+            
             st.dataframe(df, use_container_width=True, hide_index=True)
 
         elif selection == "DRUG TRAN.":
@@ -175,16 +155,17 @@ try:
                 df = df.drop(columns=[c for c in actual_month_cols if c not in selected_months], errors='ignore')
 
             kpi_col = 'TOTAL'
+            
+            st.markdown("### 📊 Key Metrics")
             st.metric(label="Total Drug Trans. Expense", value=format_inr(safe_sum(df[kpi_col]) if kpi_col in df.columns else 0))
+            
             st.dataframe(df, use_container_width=True, hide_index=True)
 
         elif selection == "X-RAY":
-            # Identify numeric money columns and convert them
             numeric_cols = [c for c in df.columns if '(GROSS)' in c or '(TDS)' in c or '(PAID)' in c]
             for c in numeric_cols:
                 df[c] = pd.to_numeric(df[c].astype(str).str.replace(r'[^\d.]', '', regex=True), errors='coerce').fillna(0)
                 
-            # Add X-RAY COUNT calculation dynamically for all months
             generated_cols = []
             for c in list(numeric_cols):
                 if '(GROSS)' in c:
@@ -195,7 +176,6 @@ try:
             
             numeric_cols.extend(generated_cols)
             
-            # Reorder columns neatly
             static_cols = [c for c in df.columns if c not in numeric_cols]
             prefixes = list(dict.fromkeys([c.split(' (')[0] for c in numeric_cols]))
             
@@ -209,13 +189,11 @@ try:
 
             df = apply_sidebar_filters(df, ['X-RAY FACILITY NAME', 'TB UNITS'])
             
-            # Month Filters
             st.sidebar.markdown("### 📅 Select Months")
             selected_months = st.sidebar.multiselect("Months to View", prefixes, default=prefixes)
             cols_to_drop = [c for c in numeric_cols if c.split(' (')[0] not in selected_months]
             df = df.drop(columns=cols_to_drop, errors='ignore')
             
-            # Merge Logic
             st.markdown("### ⚙️ View Options")
             view_type = st.radio("Display Format:", ["All Branches (Detailed)", "Facility Wise (Merged Totals)"], horizontal=True)
             
@@ -225,17 +203,41 @@ try:
                     if c in df.columns: agg_funcs[c] = 'first'
                 df = df.groupby('X-RAY FACILITY NAME', as_index=False).agg(agg_funcs)
                 
-            # Net Paid Total
-            paid_cols = [c for c in df.columns if '(PAID)' in c and 'TOTAL' in c.upper()]
-            final_paid_col = paid_cols[-1] if paid_cols else None
-            st.metric(label="Total Net Paid (Filtered)", value=format_inr(df[final_paid_col].sum() if final_paid_col else 0))
+            # --- 4-COLUMN KPI SETUP FOR X-RAY ---
+            st.markdown("### 📊 Key Metrics")
+            
+            # Avoid double counting if 'TOTAL' is selected alongside other months
+            gross_cols = [c for c in df.columns if '(GROSS)' in c and 'TOTAL' not in c.upper()]
+            tds_cols = [c for c in df.columns if '(TDS)' in c and 'TOTAL' not in c.upper()]
+            paid_cols = [c for c in df.columns if '(PAID)' in c and 'TOTAL' not in c.upper()]
+            count_cols = [c for c in df.columns if '(X-RAY COUNT)' in c and 'TOTAL' not in c.upper()]
+            
+            # Fallback if the user ONLY selected 'TOTAL' in the filter
+            if not gross_cols: gross_cols = [c for c in df.columns if '(GROSS)' in c]
+            if not tds_cols: tds_cols = [c for c in df.columns if '(TDS)' in c]
+            if not paid_cols: paid_cols = [c for c in df.columns if '(PAID)' in c]
+            if not count_cols: count_cols = [c for c in df.columns if '(X-RAY COUNT)' in c]
+
+            tot_gross = df[gross_cols].sum().sum() if gross_cols else 0
+            tot_tds = df[tds_cols].sum().sum() if tds_cols else 0
+            tot_paid = df[paid_cols].sum().sum() if paid_cols else 0
+            tot_count = df[count_cols].sum().sum() if count_cols else 0
+            
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric(label="Total Gross", value=format_inr(tot_gross))
+            c2.metric(label="Total TDS", value=format_inr(tot_tds))
+            c3.metric(label="Total Net Paid", value=format_inr(tot_paid))
+            c4.metric(label="Total X-Rays", value=int(tot_count))
             
             st.dataframe(df, use_container_width=True, hide_index=True)
 
         elif selection == "OTHER EXP.":
             df = apply_sidebar_filters(df, ['ZONE', 'TYPE OF EXPENSE', 'MONTH', 'BUDGET HEAD'])
             kpi_col = 'AMOUNT'
+            
+            st.markdown("### 📊 Key Metrics")
             st.metric(label="Total Other Expenditures", value=format_inr(safe_sum(df[kpi_col]) if kpi_col in df.columns else 0))
+            
             st.dataframe(df, use_container_width=True, hide_index=True)
 
 except Exception as e:

@@ -38,7 +38,6 @@ st.markdown("""
 PUBLISHED_LINK = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT_ai_LwZQK-DFfgojQ4ZUJiXKt8ikzzGEcnoLQN8hcpKfHxNtzkFEqcPn5jJC07QGiXh8_kLuexZfo/pubhtml"
 OTHER_EXP_LINK = "https://docs.google.com/spreadsheets/d/1vhQRXdUGfj4OL3y5heGQsGJeiukXhtBFX7lFzhHMaRE/export?format=csv&gid=0"
 
-# SHEET MAPPINGS
 SHEETS = {
     "ALL SPUTUM": "0",
     "POL EXP.": "57196367",
@@ -67,7 +66,6 @@ def apply_sidebar_filters(df, filter_columns):
     st.sidebar.markdown("### 🔍 Filter Data")
     for col in filter_columns:
         if col in df.columns:
-            # Create a dropdown multiselect for each filter
             options = [str(x) for x in df[col].unique() if str(x).strip() not in ['None', 'nan', '', 'NaN', '<NA>']]
             options.sort()
             selected = st.sidebar.multiselect(f"Select {col}", options)
@@ -289,7 +287,12 @@ try:
 
         # --- FILE TRACKER (NEW SUMMARY TAB) ---
         elif selection == "FILE TRACKER":
-            # Apply Dropdown Filters specific to File Tracker
+            
+            # STRICT FIX: Only keep rows where a 'FILE NAME' actually exists (ignores blank dropdown rows)
+            if 'FILE NAME' in df.columns:
+                df = df[~df['FILE NAME'].astype(str).str.strip().isin(['', 'nan', 'NaN', 'None', '<NA>'])]
+
+            # Apply Dropdown Filters
             df = apply_sidebar_filters(df, ['FILE NAME', 'STATUS'])
             
             total_files = len(df)

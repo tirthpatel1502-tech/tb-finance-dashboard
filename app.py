@@ -72,15 +72,24 @@ def apply_sidebar_filters(df, filter_columns):
                 df = df[df[col].astype(str).isin(selected)]
     return df
 
-# THE ULTIMATE BULLETPROOF NaN DESTROYER
 def clean_dataframe_for_display(df):
     """Forcefully converts everything to strings and strips out all NaN artifacts to protect Streamlit."""
     cleaned = df.copy()
-    cleaned = cleaned.fillna("") # Fill pure NaNs
+    cleaned = cleaned.fillna("") 
     for col in cleaned.columns:
-        # Convert to string and replace sneaky pandas/numpy artifacts
         cleaned[col] = cleaned[col].astype(str).replace(["nan", "NaN", "None", "<NA>", "NaT"], "")
     return cleaned
+
+def clean_column_names(columns):
+    """Prevents the 'name: NaN' JSON error by renaming blank headers"""
+    cleaned_cols = []
+    for i, col in enumerate(columns):
+        col_str = str(col).strip()
+        if col_str.lower() in ['nan', 'none', '<na>', 'nat', '']:
+            cleaned_cols.append(f"Blank_Col_{i}")
+        else:
+            cleaned_cols.append(col_str)
+    return cleaned_cols
 
 @st.cache_data(ttl=120) 
 def load_smart_data(gid, module_name):
@@ -108,12 +117,11 @@ def load_smart_data(gid, module_name):
                     else:
                         new_cols.append(s_str if s_str else m_str)
                 
-                raw_df.columns = new_cols
+                raw_df.columns = clean_column_names(new_cols)
                 df = raw_df.iloc[header_row_idx + 1:].copy()
                 if df.iloc[0].astype(str).str.strip().isin(['A', 'B', 'C']).any():
                     df = df.iloc[1:].copy()
                 
-                # Drop fully empty rows
                 df = df.dropna(how='all')
                 return df.reset_index(drop=True)
                 
@@ -121,12 +129,13 @@ def load_smart_data(gid, module_name):
             header_idx = raw_df[raw_df.apply(lambda r: r.astype(str).str.contains('(?i)SR\.? NO\.?|TB UNIT|ZONE|Name of Employee|INWARD NO', regex=True).any(), axis=1)].index
             if len(header_idx) > 0:
                 idx = header_idx[0]
-                raw_df.columns = raw_df.iloc[idx].astype(str).str.strip()
+                raw_columns = raw_df.iloc[idx].values
+                raw_df.columns = clean_column_names(raw_columns)
                 df = raw_df.iloc[idx + 1:].copy()
+                
                 if df.iloc[0].astype(str).str.strip().isin(['A', 'B', 'C', '1', '2', '3']).sum() > 3:
                      df = df.iloc[1:].copy()
                 
-                # Drop fully empty rows
                 df = df.dropna(how='all')
                 return df.reset_index(drop=True)
 
@@ -137,23 +146,23 @@ def load_smart_data(gid, module_name):
 # -----------------------------------------------------------------------------
 # 3. SIDEBAR NAVIGATION
 # -----------------------------------------------------------------------------
-# Add Logo to Sidebar if it exists
 if os.path.exists("logo.jpg"):
     st.sidebar.image("logo.jpg", use_column_width=True)
 
-st.sidebar.title("NTEP Master")
+st.sidebar.title("NTEP Navigation")
 st.sidebar.markdown("---")
-selection = st.sidebar.radio("Navigate Module:", list(SHEETS.keys()))
+selection = st.sidebar.radio("Select Module:", list(SHEETS.keys()))
 
 # -----------------------------------------------------------------------------
-# 4. MAIN HEADER
+# 4. MAIN HEADER (Updated to NTEP Finance Dashboard)
 # -----------------------------------------------------------------------------
 col1, col2 = st.columns([1, 10])
 with col1:
     if os.path.exists("logo.jpg"):
         st.image("logo.jpg", width=80)
 with col2:
-    st.title(f"NTEP Finance Dashboard: {selection}")
+    st.title("NTEP Finance Dashboard")
+    st.subheader(f"📂 {selection} Module")
 st.markdown("---")
 
 # -----------------------------------------------------------------------------
@@ -164,7 +173,7 @@ try:
     
     if not df.empty:
         # Initial cleanup of junk rows
-        if df.columns[0] != 'Unnamed: 0':
+        if len(df.columns) > 0 and df.columns[0] != 'Unnamed: 0':
             df = df[~df.iloc[:, 0].astype(str).str.strip().isin(['None', 'nan', '', 'NaN'])].copy()
 
         if selection == "ALL SPUTUM":
@@ -278,7 +287,6 @@ try:
                 st.markdown("<br>", unsafe_allow_html=True)
                 chart_df = df.groupby('X-RAY FACILITY NAME')[paid_cols[-1]].sum().reset_index()
                 chart_df = chart_df.nlargest(10, paid_cols[-1])
-                # Filter out any NaN rows before plotting
                 chart_df = chart_df.dropna()
                 if not chart_df.empty:
                     fig = px.bar(chart_df, x='X-RAY FACILITY NAME', y=paid_cols[-1], 
@@ -288,7 +296,6 @@ try:
             st.dataframe(clean_dataframe_for_display(df), use_container_width=True, hide_index=True)
 
         elif selection == "OTHER EXP.":
-            # Proper Line List Filters based on actual columns
             df = apply_sidebar_filters(df, ['ZONE', 'TB UNIT', 'MONTH OF EXPENSE', 'TYPE OF EXPENSE', 'BUDGET HEAD', 'FILE STATUS'])
             
             kpi_col = 'AMOUNT' if 'AMOUNT' in df.columns else None

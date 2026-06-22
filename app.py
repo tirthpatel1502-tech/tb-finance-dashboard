@@ -32,6 +32,17 @@ st.markdown("""
         border-radius: 8px;
         overflow: hidden;
     }
+    /* Style for the new Download Buttons */
+    .stDownloadButton button {
+        border: 1px solid #E31837;
+        color: #E31837;
+        font-weight: bold;
+        border-radius: 5px;
+    }
+    .stDownloadButton button:hover {
+        background-color: #E31837;
+        color: white;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -77,7 +88,6 @@ def clean_dataframe_for_display(df):
     cleaned = df.copy()
     cleaned = cleaned.fillna("") 
     for col in cleaned.columns:
-        # Check if column contains floats ending in .0 and format to int, otherwise pure string
         if cleaned[col].dtype == float:
             cleaned[col] = cleaned[col].apply(lambda x: f"{int(x)}" if x.is_integer() else f"{x}")
         cleaned[col] = cleaned[col].astype(str).replace(["nan", "NaN", "None", "<NA>", "NaT", "0.0"], "")
@@ -92,6 +102,12 @@ def clean_column_names(columns):
         else:
             cleaned_cols.append(col_str)
     return cleaned_cols
+
+# --- NEW DOWNLOAD ENGINE ---
+@st.cache_data
+def convert_df_to_csv(df):
+    """Converts a dataframe into a downloadable CSV format."""
+    return df.to_csv(index=False).encode('utf-8')
 
 @st.cache_data(ttl=120) 
 def load_smart_data(gid, module_name):
@@ -200,29 +216,22 @@ try:
                 st.sidebar.markdown("### 📅 Select Months")
                 selected_months = st.sidebar.multiselect("Months to View", month_cols, default=month_cols)
                 
-                # --- DYNAMIC MATH ENGINE ---
                 kpi_col = 'AMOUNT Rs.' if 'AMOUNT Rs.' in df.columns else ('AMOUNT Rs' if 'AMOUNT Rs' in df.columns else None)
                 tot_col = 'TOTAL' if 'TOTAL' in df.columns else None
 
                 if kpi_col and tot_col:
-                    # 1. Clean data for calculation
                     for c in month_cols:
                         df[c] = pd.to_numeric(df[c].astype(str).str.replace(r'[^\d.-]', '', regex=True), errors='coerce').fillna(0)
                     temp_tot = pd.to_numeric(df[tot_col].astype(str).str.replace(r'[^\d.-]', '', regex=True), errors='coerce').fillna(0)
                     temp_amt = pd.to_numeric(df[kpi_col].astype(str).str.replace(r'[^\d.-]', '', regex=True), errors='coerce').fillna(0)
 
-                    # 2. Derive specific multiplier rates (Amount / Total)
                     rates = np.where(temp_tot != 0, temp_amt / temp_tot, 0)
-
-                    # 3. Recalculate based ONLY on user's selected months
                     new_counts = df[selected_months].sum(axis=1) if selected_months else 0
                     df[tot_col] = new_counts
                     df[kpi_col] = new_counts * rates
 
-                # 4. Hide unselected months
                 df = df.drop(columns=[c for c in month_cols if c not in selected_months], errors='ignore')
 
-            # Render KPI
             kpi_col_name = 'AMOUNT Rs.' if 'AMOUNT Rs.' in df.columns else ('AMOUNT Rs' if 'AMOUNT Rs' in df.columns else None)
             total_val = safe_sum(df[kpi_col_name]) if kpi_col_name else 0
             aasha_val = safe_sum(df[df['TYPE OF PAYMENT'].astype(str).str.upper().str.contains('AASHA', na=False)][kpi_col_name]) if kpi_col_name and 'TYPE OF PAYMENT' in df.columns else 0
@@ -235,12 +244,15 @@ try:
             
             st.markdown("<br>", unsafe_allow_html=True)
             
+            final_display_df = clean_dataframe_for_display(df)
+            st.download_button(label=f"📥 Download {selection} Data", data=convert_df_to_csv(final_display_df), file_name=f"NTEP_{selection}_Report.csv", mime="text/csv")
+            
             if aasha_val > 0 or dmc_val > 0:
                 fig = px.pie(values=[aasha_val, dmc_val], names=['AASHA', 'DMC'], hole=0.5, 
                              color_discrete_sequence=['#E31837', '#FFC72C'], title="Expense Distribution")
                 st.plotly_chart(fig, use_container_width=True, theme="streamlit")
             
-            st.dataframe(clean_dataframe_for_display(df), use_container_width=True, hide_index=True)
+            st.dataframe(final_display_df, use_container_width=True, hide_index=True)
 
         # --- POL EXP TAB ---
         elif selection == "POL EXP.":
@@ -252,10 +264,15 @@ try:
             base_cols = [c for c in df.columns if c in ['Sr. No.', 'Name of Employee', 'Bank  A/c No.', 'IFSC Code', 'Designation', 'Vehicle No.', kpi_col]]
             detail_cols = [c for c in df.columns if c not in base_cols and 'Unnamed' not in str(c)]
             
-            st.dataframe(clean_dataframe_for_display(df[base_cols]), use_container_width=True, hide_index=True)
+            final_display_df = clean_dataframe_for_display(df[base_cols])
+            full_detail_df = clean_dataframe_for_display(df[['Name of Employee'] + detail_cols])
+            
+            st.download_button(label=f"📥 Download {selection} Data", data=convert_df_to_csv(clean_dataframe_for_display(df)), file_name=f"NTEP_{selection}_Report.csv", mime="text/csv")
+            
+            st.dataframe(final_display_df, use_container_width=True, hide_index=True)
             
             with st.expander("➕ View Detailed Expense Breakdown (VP, VM, Mis, Training...)"):
-                st.dataframe(clean_dataframe_for_display(df[['Name of Employee'] + detail_cols]), use_container_width=True, hide_index=True)
+                st.dataframe(full_detail_df, use_container_width=True, hide_index=True)
 
         # --- DRUG TRAN TAB ---
         elif selection == "DRUG TRAN.":
@@ -266,7 +283,6 @@ try:
                 st.sidebar.markdown("### 📅 Select Months")
                 selected_months = st.sidebar.multiselect("Months to View", actual_month_cols, default=actual_month_cols)
                 
-                # Dynamic Math for DRUG TRAN
                 kpi_col = 'TOTAL' if 'TOTAL' in df.columns else None
                 if kpi_col:
                     for c in actual_month_cols:
@@ -277,7 +293,11 @@ try:
 
             kpi_col_name = 'TOTAL' if 'TOTAL' in df.columns else None
             st.metric(label="Total Drug Trans. Expense", value=format_inr(safe_sum(df[kpi_col_name]) if kpi_col_name in df.columns else 0))
-            st.dataframe(clean_dataframe_for_display(df), use_container_width=True, hide_index=True)
+            
+            final_display_df = clean_dataframe_for_display(df)
+            st.download_button(label=f"📥 Download {selection} Data", data=convert_df_to_csv(final_display_df), file_name=f"NTEP_{selection}_Report.csv", mime="text/csv")
+            
+            st.dataframe(final_display_df, use_container_width=True, hide_index=True)
 
         # --- X-RAY TAB ---
         elif selection == "X-RAY":
@@ -310,7 +330,6 @@ try:
                     if c in df.columns: agg_funcs[c] = 'first'
                 df = df.groupby('X-RAY FACILITY NAME', as_index=False).agg(agg_funcs)
                 
-            # Dynamic Totaling for X-RAY View Table
             gross_cols = [c for c in df.columns if '(GROSS)' in c and 'TOTAL' not in c.upper()]
             tds_cols = [c for c in df.columns if '(TDS)' in c and 'TOTAL' not in c.upper()]
             paid_cols = [c for c in df.columns if '(PAID)' in c and 'TOTAL' not in c.upper()]
@@ -328,7 +347,11 @@ try:
             st.metric(label="Total X-Rays Performed", value=int(tot_count))
             
             simplified_view_cols = static_cols + count_only_cols
-            st.dataframe(clean_dataframe_for_display(df[simplified_view_cols]), use_container_width=True, hide_index=True)
+            final_display_df = clean_dataframe_for_display(df[simplified_view_cols])
+            
+            st.download_button(label=f"📥 Download {selection} Data", data=convert_df_to_csv(final_display_df), file_name=f"NTEP_{selection}_Report.csv", mime="text/csv")
+            
+            st.dataframe(final_display_df, use_container_width=True, hide_index=True)
 
         # --- OTHER EXP TAB ---
         elif selection == "OTHER EXP.":
@@ -342,7 +365,10 @@ try:
             c1.metric(label="Total Other Expenditures", value=format_inr(total_val))
             c2.metric(label="Total Number of Claims", value=total_claims)
             
-            st.dataframe(clean_dataframe_for_display(df), use_container_width=True, hide_index=True)
+            final_display_df = clean_dataframe_for_display(df)
+            st.download_button(label=f"📥 Download {selection} Data", data=convert_df_to_csv(final_display_df), file_name=f"NTEP_{selection}_Report.csv", mime="text/csv")
+            
+            st.dataframe(final_display_df, use_container_width=True, hide_index=True)
 
         # --- FILE TRACKER ---
         elif selection == "FILE TRACKER":
@@ -360,7 +386,10 @@ try:
             c2.metric("Files SUBMITTED", submitted_files)
             c3.metric("Pending / Processing", total_files - submitted_files)
             
-            st.dataframe(clean_dataframe_for_display(df), use_container_width=True, hide_index=True)
+            final_display_df = clean_dataframe_for_display(df)
+            st.download_button(label=f"📥 Download {selection} Data", data=convert_df_to_csv(final_display_df), file_name=f"NTEP_{selection}_Report.csv", mime="text/csv")
+            
+            st.dataframe(final_display_df, use_container_width=True, hide_index=True)
 
 except Exception as e:
     st.error("A critical error occurred while parsing the data structure.")

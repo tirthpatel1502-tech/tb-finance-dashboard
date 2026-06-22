@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import os
+from io import BytesIO
 
 # -----------------------------------------------------------------------------
 # 1. GLOBAL CONFIGURATION & SETUP
@@ -34,13 +35,13 @@ st.markdown("""
     }
     /* Style for the new Download Buttons */
     .stDownloadButton button {
-        border: 1px solid #E31837;
-        color: #E31837;
+        border: 1px solid #005A9C;
+        color: #005A9C;
         font-weight: bold;
         border-radius: 5px;
     }
     .stDownloadButton button:hover {
-        background-color: #E31837;
+        background-color: #005A9C;
         color: white;
     }
 </style>
@@ -103,11 +104,15 @@ def clean_column_names(columns):
             cleaned_cols.append(col_str)
     return cleaned_cols
 
-# --- NEW DOWNLOAD ENGINE ---
+# --- NEW EXCEL DOWNLOAD ENGINE ---
 @st.cache_data
-def convert_df_to_csv(df):
-    """Converts a dataframe into a downloadable CSV format."""
-    return df.to_csv(index=False).encode('utf-8')
+def convert_df_to_excel(df):
+    """Converts a dataframe into a downloadable Excel (.xlsx) file in memory."""
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='NTEP_Filtered_Data')
+    processed_data = output.getvalue()
+    return processed_data
 
 @st.cache_data(ttl=120) 
 def load_smart_data(gid, module_name):
@@ -245,7 +250,14 @@ try:
             st.markdown("<br>", unsafe_allow_html=True)
             
             final_display_df = clean_dataframe_for_display(df)
-            st.download_button(label=f"📥 Download {selection} Data", data=convert_df_to_csv(final_display_df), file_name=f"NTEP_{selection}_Report.csv", mime="text/csv")
+            
+            # EXCEL DOWNLOAD BUTTON
+            st.download_button(
+                label=f"📥 Download {selection} Data (Excel)", 
+                data=convert_df_to_excel(final_display_df), 
+                file_name=f"NTEP_{selection}_Report.xlsx", 
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
             
             if aasha_val > 0 or dmc_val > 0:
                 fig = px.pie(values=[aasha_val, dmc_val], names=['AASHA', 'DMC'], hole=0.5, 
@@ -267,7 +279,13 @@ try:
             final_display_df = clean_dataframe_for_display(df[base_cols])
             full_detail_df = clean_dataframe_for_display(df[['Name of Employee'] + detail_cols])
             
-            st.download_button(label=f"📥 Download {selection} Data", data=convert_df_to_csv(clean_dataframe_for_display(df)), file_name=f"NTEP_{selection}_Report.csv", mime="text/csv")
+            # EXCEL DOWNLOAD BUTTON
+            st.download_button(
+                label=f"📥 Download {selection} Data (Excel)", 
+                data=convert_df_to_excel(clean_dataframe_for_display(df)), 
+                file_name=f"NTEP_{selection}_Report.xlsx", 
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
             
             st.dataframe(final_display_df, use_container_width=True, hide_index=True)
             
@@ -295,7 +313,14 @@ try:
             st.metric(label="Total Drug Trans. Expense", value=format_inr(safe_sum(df[kpi_col_name]) if kpi_col_name in df.columns else 0))
             
             final_display_df = clean_dataframe_for_display(df)
-            st.download_button(label=f"📥 Download {selection} Data", data=convert_df_to_csv(final_display_df), file_name=f"NTEP_{selection}_Report.csv", mime="text/csv")
+            
+            # EXCEL DOWNLOAD BUTTON
+            st.download_button(
+                label=f"📥 Download {selection} Data (Excel)", 
+                data=convert_df_to_excel(final_display_df), 
+                file_name=f"NTEP_{selection}_Report.xlsx", 
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
             
             st.dataframe(final_display_df, use_container_width=True, hide_index=True)
 
@@ -349,7 +374,13 @@ try:
             simplified_view_cols = static_cols + count_only_cols
             final_display_df = clean_dataframe_for_display(df[simplified_view_cols])
             
-            st.download_button(label=f"📥 Download {selection} Data", data=convert_df_to_csv(final_display_df), file_name=f"NTEP_{selection}_Report.csv", mime="text/csv")
+            # EXCEL DOWNLOAD BUTTON
+            st.download_button(
+                label=f"📥 Download {selection} Data (Excel)", 
+                data=convert_df_to_excel(final_display_df), 
+                file_name=f"NTEP_{selection}_Report.xlsx", 
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
             
             st.dataframe(final_display_df, use_container_width=True, hide_index=True)
 
@@ -366,7 +397,14 @@ try:
             c2.metric(label="Total Number of Claims", value=total_claims)
             
             final_display_df = clean_dataframe_for_display(df)
-            st.download_button(label=f"📥 Download {selection} Data", data=convert_df_to_csv(final_display_df), file_name=f"NTEP_{selection}_Report.csv", mime="text/csv")
+            
+            # EXCEL DOWNLOAD BUTTON
+            st.download_button(
+                label=f"📥 Download {selection} Data (Excel)", 
+                data=convert_df_to_excel(final_display_df), 
+                file_name=f"NTEP_{selection}_Report.xlsx", 
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
             
             st.dataframe(final_display_df, use_container_width=True, hide_index=True)
 
@@ -387,7 +425,14 @@ try:
             c3.metric("Pending / Processing", total_files - submitted_files)
             
             final_display_df = clean_dataframe_for_display(df)
-            st.download_button(label=f"📥 Download {selection} Data", data=convert_df_to_csv(final_display_df), file_name=f"NTEP_{selection}_Report.csv", mime="text/csv")
+            
+            # EXCEL DOWNLOAD BUTTON
+            st.download_button(
+                label=f"📥 Download {selection} Data (Excel)", 
+                data=convert_df_to_excel(final_display_df), 
+                file_name=f"NTEP_{selection}_Report.xlsx", 
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
             
             st.dataframe(final_display_df, use_container_width=True, hide_index=True)
 

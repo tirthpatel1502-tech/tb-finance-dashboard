@@ -56,7 +56,8 @@ SHEETS = {
     "DRUG TRAN.": "1226029008",  
     "X-RAY": "721930106",
     "OTHER EXP.": "NEW_LINK",
-    "FILE TRACKER": "1062217994" 
+    "FILE TRACKER": "1062217994",
+    "NEW MODULE": "123456789"  # <--- UPDATE THIS GID WITH YOUR NEW SHEET'S GID
 }
 
 # -----------------------------------------------------------------------------
@@ -427,6 +428,29 @@ try:
             final_display_df = clean_dataframe_for_display(df)
             
             # EXCEL DOWNLOAD BUTTON
+            st.download_button(
+                label=f"📥 Download {selection} Data (Excel)", 
+                data=convert_df_to_excel(final_display_df), 
+                file_name=f"NTEP_{selection}_Report.xlsx", 
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+            
+            st.dataframe(final_display_df, use_container_width=True, hide_index=True)
+
+        # --- NEW MODULE PLACEHOLDER ---
+        elif selection == "NEW MODULE":  # <--- MUST MATCH THE EXACT NAME IN THE SHEETS DICT AT THE TOP
+            
+            # 1. Add any columns you want to filter by here. (Make sure they perfectly match your Google Sheet headers!)
+            # df = apply_sidebar_filters(df, ['COLUMN_NAME_1', 'COLUMN_NAME_2']) 
+            
+            # 2. Add KPI Summary Boxes
+            total_rows = len(df)
+            st.metric("Total Records in this Sheet", total_rows)
+            
+            # 3. Clean and Display the Data
+            final_display_df = clean_dataframe_for_display(df)
+            
+            # 4. Excel Download Button
             st.download_button(
                 label=f"📥 Download {selection} Data (Excel)", 
                 data=convert_df_to_excel(final_display_df), 

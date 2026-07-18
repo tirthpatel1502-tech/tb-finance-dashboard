@@ -50,7 +50,7 @@ st.markdown("""
 PUBLISHED_LINK = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT_ai_LwZQK-DFfgojQ4ZUJiXKt8ikzzGEcnoLQN8hcpKfHxNtzkFEqcPn5jJC07QGiXh8_kLuexZfo/pubhtml"
 OTHER_EXP_LINK = "https://docs.google.com/spreadsheets/d/1vhQRXdUGfj4OL3y5heGQsGJeiukXhtBFX7lFzhHMaRE/export?format=csv&gid=0"
 # Link converted to direct CSV export format for Pandas
-NEW_MODULE_LINK = "https://docs.google.com/spreadsheets/d/1lvBqt_rLHPChNZyWDe-v951iIFBOgStZWHiDVClBtE0/export?format=csv&gid=1838712760"
+JUNE_POL_LINK = "https://docs.google.com/spreadsheets/d/1lvBqt_rLHPChNZyWDe-v951iIFBOgStZWHiDVClBtE0/export?format=csv&gid=1838712760"
 
 SHEETS = {
     "ALL SPUTUM": "0",
@@ -59,7 +59,7 @@ SHEETS = {
     "X-RAY": "721930106",
     "OTHER EXP.": "NEW_LINK",
     "FILE TRACKER": "1062217994",
-    "NEW MODULE": "1838712760"
+    "JUNE POL": "1838712760"
 }
 
 # -----------------------------------------------------------------------------
@@ -121,8 +121,8 @@ def convert_df_to_excel(df):
 def load_smart_data(gid, module_name):
     if module_name == "OTHER EXP.":
         csv_url = OTHER_EXP_LINK
-    elif module_name == "NEW MODULE":
-        csv_url = NEW_MODULE_LINK
+    elif module_name == "JUNE POL":
+        csv_url = JUNE_POL_LINK
     else:
         base_url = PUBLISHED_LINK.split('/pub')[0] 
         csv_url = f"{base_url}/pub?gid={gid}&single=true&output=csv"
@@ -208,7 +208,7 @@ try:
             elif selection == "X-RAY": identifier_col = 'X-RAY FACILITY NAME'
             elif selection == "OTHER EXP.": identifier_col = 'TYPE OF EXPENSE'
             elif selection == "FILE TRACKER": identifier_col = 'FILE NAME'
-            elif selection == "NEW MODULE": identifier_col = df.columns[0] if len(df.columns) > 0 else None
+            elif selection == "JUNE POL": identifier_col = df.columns[0] if len(df.columns) > 0 else None
 
             if identifier_col and identifier_col in df.columns:
                 df[identifier_col] = df[identifier_col].astype(str).replace(r'^\s*$', np.nan, regex=True).replace(['None', 'nan', 'NaN', '<NA>'], np.nan)
@@ -436,8 +436,8 @@ try:
             
             st.dataframe(final_display_df, use_container_width=True, hide_index=True)
 
-        # --- NEW MODULE TAB ---
-        elif selection == "NEW MODULE":
+        # --- JUNE POL TAB ---
+        elif selection == "JUNE POL":
             
             # NOTE: If you want to add sidebar filters to this new sheet, uncomment the line below 
             # and replace the placeholders with the actual column names from your new Google Sheet.

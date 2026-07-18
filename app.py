@@ -49,6 +49,8 @@ st.markdown("""
 
 PUBLISHED_LINK = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT_ai_LwZQK-DFfgojQ4ZUJiXKt8ikzzGEcnoLQN8hcpKfHxNtzkFEqcPn5jJC07QGiXh8_kLuexZfo/pubhtml"
 OTHER_EXP_LINK = "https://docs.google.com/spreadsheets/d/1vhQRXdUGfj4OL3y5heGQsGJeiukXhtBFX7lFzhHMaRE/export?format=csv&gid=0"
+# Link converted to direct CSV export format for Pandas
+NEW_MODULE_LINK = "https://docs.google.com/spreadsheets/d/1lvBqt_rLHPChNZyWDe-v951iIFBOgStZWHiDVClBtE0/export?format=csv&gid=1838712760"
 
 SHEETS = {
     "ALL SPUTUM": "0",
@@ -57,7 +59,7 @@ SHEETS = {
     "X-RAY": "721930106",
     "OTHER EXP.": "NEW_LINK",
     "FILE TRACKER": "1062217994",
-    "NEW MODULE": "123456789"  # <--- UPDATE THIS GID WITH YOUR NEW SHEET'S GID
+    "NEW MODULE": "1838712760"
 }
 
 # -----------------------------------------------------------------------------
@@ -105,7 +107,7 @@ def clean_column_names(columns):
             cleaned_cols.append(col_str)
     return cleaned_cols
 
-# --- NEW EXCEL DOWNLOAD ENGINE ---
+# --- EXCEL DOWNLOAD ENGINE ---
 @st.cache_data
 def convert_df_to_excel(df):
     """Converts a dataframe into a downloadable Excel (.xlsx) file in memory."""
@@ -119,6 +121,8 @@ def convert_df_to_excel(df):
 def load_smart_data(gid, module_name):
     if module_name == "OTHER EXP.":
         csv_url = OTHER_EXP_LINK
+    elif module_name == "NEW MODULE":
+        csv_url = NEW_MODULE_LINK
     else:
         base_url = PUBLISHED_LINK.split('/pub')[0] 
         csv_url = f"{base_url}/pub?gid={gid}&single=true&output=csv"
@@ -204,6 +208,7 @@ try:
             elif selection == "X-RAY": identifier_col = 'X-RAY FACILITY NAME'
             elif selection == "OTHER EXP.": identifier_col = 'TYPE OF EXPENSE'
             elif selection == "FILE TRACKER": identifier_col = 'FILE NAME'
+            elif selection == "NEW MODULE": identifier_col = df.columns[0] if len(df.columns) > 0 else None
 
             if identifier_col and identifier_col in df.columns:
                 df[identifier_col] = df[identifier_col].astype(str).replace(r'^\s*$', np.nan, regex=True).replace(['None', 'nan', 'NaN', '<NA>'], np.nan)
@@ -252,7 +257,6 @@ try:
             
             final_display_df = clean_dataframe_for_display(df)
             
-            # EXCEL DOWNLOAD BUTTON
             st.download_button(
                 label=f"📥 Download {selection} Data (Excel)", 
                 data=convert_df_to_excel(final_display_df), 
@@ -280,7 +284,6 @@ try:
             final_display_df = clean_dataframe_for_display(df[base_cols])
             full_detail_df = clean_dataframe_for_display(df[['Name of Employee'] + detail_cols])
             
-            # EXCEL DOWNLOAD BUTTON
             st.download_button(
                 label=f"📥 Download {selection} Data (Excel)", 
                 data=convert_df_to_excel(clean_dataframe_for_display(df)), 
@@ -315,7 +318,6 @@ try:
             
             final_display_df = clean_dataframe_for_display(df)
             
-            # EXCEL DOWNLOAD BUTTON
             st.download_button(
                 label=f"📥 Download {selection} Data (Excel)", 
                 data=convert_df_to_excel(final_display_df), 
@@ -375,7 +377,6 @@ try:
             simplified_view_cols = static_cols + count_only_cols
             final_display_df = clean_dataframe_for_display(df[simplified_view_cols])
             
-            # EXCEL DOWNLOAD BUTTON
             st.download_button(
                 label=f"📥 Download {selection} Data (Excel)", 
                 data=convert_df_to_excel(final_display_df), 
@@ -399,7 +400,6 @@ try:
             
             final_display_df = clean_dataframe_for_display(df)
             
-            # EXCEL DOWNLOAD BUTTON
             st.download_button(
                 label=f"📥 Download {selection} Data (Excel)", 
                 data=convert_df_to_excel(final_display_df), 
@@ -427,7 +427,6 @@ try:
             
             final_display_df = clean_dataframe_for_display(df)
             
-            # EXCEL DOWNLOAD BUTTON
             st.download_button(
                 label=f"📥 Download {selection} Data (Excel)", 
                 data=convert_df_to_excel(final_display_df), 
@@ -437,20 +436,18 @@ try:
             
             st.dataframe(final_display_df, use_container_width=True, hide_index=True)
 
-        # --- NEW MODULE PLACEHOLDER ---
-        elif selection == "NEW MODULE":  # <--- MUST MATCH THE EXACT NAME IN THE SHEETS DICT AT THE TOP
+        # --- NEW MODULE TAB ---
+        elif selection == "NEW MODULE":
             
-            # 1. Add any columns you want to filter by here. (Make sure they perfectly match your Google Sheet headers!)
+            # NOTE: If you want to add sidebar filters to this new sheet, uncomment the line below 
+            # and replace the placeholders with the actual column names from your new Google Sheet.
             # df = apply_sidebar_filters(df, ['COLUMN_NAME_1', 'COLUMN_NAME_2']) 
             
-            # 2. Add KPI Summary Boxes
             total_rows = len(df)
-            st.metric("Total Records in this Sheet", total_rows)
+            st.metric("Total Records", total_rows)
             
-            # 3. Clean and Display the Data
             final_display_df = clean_dataframe_for_display(df)
             
-            # 4. Excel Download Button
             st.download_button(
                 label=f"📥 Download {selection} Data (Excel)", 
                 data=convert_df_to_excel(final_display_df), 
